@@ -1,21 +1,26 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 use std::collections::HashSet;
+use nalgebra::DMatrix;
 
 type TensorRef = Rc<RefCell<Tensor>>;
 
 pub struct Tensor {
-    pub data: f64,
-    pub grad: f64,
+    pub data: DMatrix<f64>,
+    pub grad: DMatrix<f64>,
     pub parents: Vec<TensorRef>,
     pub backward: Option<Box<dyn Fn()>>,
 }
 
 impl Tensor {
-    pub fn new(data: f64) -> Tensor {
+    pub fn new(data: DMatrix<f64>) -> Tensor {
+
+        let nrows = data.nrows();
+        let ncols = data.ncols();
+
         Tensor {
             data: data,
-            grad: 0.0,
+            grad: DMatrix::zeros(nrows, ncols),
             parents: vec![],
             backward: None
         }
@@ -23,9 +28,13 @@ impl Tensor {
 }
 
 pub fn add(a: &TensorRef, b: &TensorRef) -> TensorRef {
+    // Get dimensions
+    let out_rows = a.borrow().data.nrows();
+    let out_cols = a.borrow().data.ncols();
+
     let out = Rc::new(RefCell::new(Tensor {
-        data: a.borrow().data + b.borrow().data,
-        grad: 0.0,
+        data: &a.borrow().data + &b.borrow().data, // Element-wise addition of matrices
+        grad: DMatrix::zeros(out_rows, out_cols),
         parents: vec![a.clone(), b.clone()],
         backward: None
     }));
@@ -36,7 +45,7 @@ pub fn add(a: &TensorRef, b: &TensorRef) -> TensorRef {
     let b_clone = b.clone();
 
     out.borrow_mut().backward = Some(Box::new(move || {
-        let grad = out_clone.borrow().grad;
+        let grad = &out_clone.borrow().grad;
         a_clone.borrow_mut().grad += grad;
         b_clone.borrow_mut().grad += grad;
     }));
@@ -45,9 +54,13 @@ pub fn add(a: &TensorRef, b: &TensorRef) -> TensorRef {
 }
 
 pub fn mul(a: &TensorRef, b: &TensorRef) -> TensorRef {
+    // Get dimensions
+    let out_rows = a.borrow().data.nrows();
+    let out_cols = a.borrow().data.ncols();
+
     let out = Rc::new(RefCell::new(Tensor {
-        data: a.borrow().data * b.borrow().data,
-        grad: 0.0,
+        data: &a.borrow().data * &b.borrow().data,
+        grad: DMatrix::zeros(out_rows, out_cols),
         parents: vec![a.clone(), b.clone()],
         backward: None
     }));
@@ -58,11 +71,11 @@ pub fn mul(a: &TensorRef, b: &TensorRef) -> TensorRef {
     let b_clone = b.clone();
 
     out.borrow_mut().backward = Some(Box::new(move || {
-        let grad = out_clone.borrow().grad;
-        let a_data = a_clone.borrow().data;
-        let b_data = b_clone.borrow().data;
-        a_clone.borrow_mut().grad += grad * b_data;
-        b_clone.borrow_mut().grad += grad * a_data;
+        let grad = &out_clone.borrow().grad;
+        let a_data = &mut a_clone.borrow_mut();
+        let b_data = &mut b_clone.borrow_mut();
+        a_data.grad += grad * b_data.data.transpose(); // dC x B^T
+        b_data.grad += a_data.data.transpose() * grad; // A^T x dC (which is also (dC^T x A)^T)
     }));
 
     out
@@ -94,8 +107,8 @@ pub fn topological_sort(t: &TensorRef, visited: &mut HashSet<usize>, order: &mut
  * Updates Gradients of Tensors in reverse topological order
  * Gradients are summed up before being used to go backwards
  */
-pub fn backward(t: &TensorRef) {
-    t.borrow_mut().grad = 1.0; // Initial gradient, eventually change this to some kind of loss function
+pub fn backward(t: &TensorRef, init_grad: DMatrix<f64>) {
+    t.borrow_mut().grad = init_grad; // Initial gradient, eventually change this to some kind of loss function
     
     let mut order = Vec::<TensorRef>::new();
     let mut visited = HashSet::<usize>::new();
