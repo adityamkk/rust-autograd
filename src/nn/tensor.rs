@@ -81,6 +81,31 @@ pub fn mul(a: &TensorRef, b: &TensorRef) -> TensorRef {
     out
 }
 
+pub fn relu(a: &TensorRef) -> TensorRef {
+    // Get dimensions
+    let out_rows = a.borrow().data.nrows();
+    let out_cols = a.borrow().data.ncols();
+
+    let out = Rc::new(RefCell::new(Tensor {
+        data: a.borrow().data.map(|x| {if x > 0.0 { x } else { 0.0 }}),
+        grad: DMatrix::zeros(out_rows, out_cols),
+        parents: vec![a.clone()],
+        backward: None
+    }));
+
+    let out_clone = out.clone();
+    let a_clone = a.clone();
+
+    out.borrow_mut().backward = Some(Box::new(move || {
+        let grad = &out_clone.borrow().grad;
+        let a_data = &mut a_clone.borrow_mut();
+        let relu_d = a_data.data.map(|x| {if x > 0.0 { 1.0 } else { 0.0 }});
+        a_data.grad += grad.component_mul(&relu_d); // Hadamard Product
+    }));
+
+    out
+}
+
 /**
  * Builds the topological sort of the computational graph
  * Uses DFS
