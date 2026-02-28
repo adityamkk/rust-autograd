@@ -31,6 +31,8 @@ pub fn add(a: &TensorRef, b: &TensorRef) -> TensorRef {
     // Get dimensions
     let out_rows = a.borrow().data.nrows();
     let out_cols = a.borrow().data.ncols();
+    assert_eq!(out_rows, b.borrow().data.nrows());
+    assert_eq!(out_cols, b.borrow().data.ncols());
 
     let out = Rc::new(RefCell::new(Tensor {
         data: &a.borrow().data + &b.borrow().data, // Element-wise addition of matrices
@@ -45,9 +47,13 @@ pub fn add(a: &TensorRef, b: &TensorRef) -> TensorRef {
     let b_clone = b.clone();
 
     out.borrow_mut().backward = Some(Box::new(move || {
+        println!("Get gradient in add");
         let grad = &out_clone.borrow().grad;
+        println!("Got gradient in add, add to gradient of first prev...");
         a_clone.borrow_mut().grad += grad;
+        println!("Finished first add, add to gradient of second prev...");
         b_clone.borrow_mut().grad += grad;
+        println!("Done with add backprop");
     }));
 
     out
@@ -55,8 +61,12 @@ pub fn add(a: &TensorRef, b: &TensorRef) -> TensorRef {
 
 pub fn mul(a: &TensorRef, b: &TensorRef) -> TensorRef {
     // Get dimensions
-    let out_rows = a.borrow().data.nrows();
-    let out_cols = a.borrow().data.ncols();
+
+    let a_data = &a.borrow().data;
+    let b_data = &b.borrow().data;
+    let out_rows = a_data.nrows();
+    let out_cols = b_data.ncols();
+    assert_eq!(a_data.ncols(), b_data.nrows());
 
     let out = Rc::new(RefCell::new(Tensor {
         data: &a.borrow().data * &b.borrow().data,
@@ -162,7 +172,26 @@ pub fn backward(t: &TensorRef, init_grad: DMatrix<f64>) {
         if let Some(ref backward_fn) = tensor.borrow().backward {
             backward_fn(); // Use current gradient to update gradients of parents
         }
-        apply_grad_penalty(&tensor, 0.05);
+        apply_grad_penalty(&tensor, 0.2);
         reset_grad(&tensor);
     }
+}
+
+pub fn loss_mse(y_obs: &DMatrix<f64>, y_exp: &DMatrix<f64>) -> f64 {
+    assert_eq!(y_obs.shape(), y_exp.shape());
+
+    let mut sum = 0.0;
+
+    for (x, y) in y_obs.iter().zip(y_exp.iter()) {
+        let diff = x - y;
+        sum += diff * diff;
+    }
+
+    sum / (y_obs.len() as f64)
+}
+
+pub fn loss_mse_grad(y_obs: &DMatrix<f64>, y_exp: &DMatrix<f64>) -> DMatrix<f64> {
+    assert_eq!(y_obs.shape(), y_exp.shape());
+
+    (y_obs - y_exp) * 2.0
 }
