@@ -128,6 +128,23 @@ pub fn topological_sort(t: &TensorRef, visited: &mut HashSet<usize>, order: &mut
 }
 
 /**
+ * Applies a gradient penalty to the tensor, scaled by a learning rate factor
+ */
+pub fn apply_grad_penalty(t: &TensorRef, lr: f64) {
+    let mut t_data = t.borrow_mut();
+    let penalty = &t_data.grad * (-1.0 * lr);
+    t_data.data += penalty;
+}
+
+pub fn reset_grad(t: &TensorRef) {
+    let mut t_data = t.borrow_mut();
+    let t_rows = t_data.grad.nrows();
+    let t_cols = t_data.grad.ncols();
+
+    t_data.grad = DMatrix::zeros(t_rows, t_cols);
+}
+
+/**
  * Given a Tensor to compute gradients on, compute gradients on all previous tensors
  * Updates Gradients of Tensors in reverse topological order
  * Gradients are summed up before being used to go backwards
@@ -145,5 +162,7 @@ pub fn backward(t: &TensorRef, init_grad: DMatrix<f64>) {
         if let Some(ref backward_fn) = tensor.borrow().backward {
             backward_fn(); // Use current gradient to update gradients of parents
         }
+        apply_grad_penalty(&tensor, 0.05);
+        reset_grad(&tensor);
     }
 }

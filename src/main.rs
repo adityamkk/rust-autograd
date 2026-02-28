@@ -7,12 +7,11 @@ use nalgebra::DMatrix;
 fn main() {
     println!("Hello, world!");
 
-    let rows = 3;
-    let columns = 3;
+    let rows = 2;
+    let columns = 2;
     let data = vec![
-        1.0, 2.0, 3.0,
-        4.0, 5.0, 6.0,
-        7.0, 8.0, 9.0,
+        1.0, 2.0,
+        4.0, 5.0,
     ];
 
     let a = Rc::new(RefCell::new(Tensor::new(DMatrix::<f64>::from_row_slice(rows, columns, &data))));
@@ -20,15 +19,14 @@ fn main() {
     let b = Rc::new(RefCell::new(Tensor::new(DMatrix::<f64>::from_row_slice(rows, columns, &data))));
 
     let z_grad = vec![
-        0.1, 0.2, -0.1,
-        1.1, 5.2, -6.8,
-        0.7, 0.4, 2.2,
+        0.1, 0.2,
+        1.1, 5.2,
     ];
     let z = add(&mul(&a, &x), &b);
     backward(&z, DMatrix::<f64>::from_row_slice(rows, columns, &z_grad));
 
-    println!("A Data: {}, A Grad: {}", a.borrow().data, a.borrow().grad);
-    println!("X Data: {}, X Grad: {}", x.borrow().data, x.borrow().grad);
-    println!("B Data: {}, B Grad: {}", b.borrow().data, b.borrow().grad);
-    println!("Z Data: {}, Z Grad: {}", z.borrow().data, z.borrow().grad);
+    println!("A Data: {}", a.borrow().data);
+    println!("X Data: {}", x.borrow().data);
+    println!("B Data: {}", b.borrow().data);
+    println!("Z Data: {}", z.borrow().data);
 }
