@@ -116,6 +116,72 @@ pub fn relu(a: &TensorRef) -> TensorRef {
     out
 }
 
+pub fn logsumexp(a: &TensorRef) -> TensorRef {
+    let rows = a.borrow().data.nrows();
+    let cols = a.borrow().data.ncols();
+
+    // ---- Forward pass ----
+    let mut out_data = DMatrix::zeros(1, cols);
+
+    {
+        let a_data = &a.borrow().data;
+
+        for j in 0..cols {
+            // 1️⃣ Find max for numerical stability
+            let mut max = f64::NEG_INFINITY;
+            for i in 0..rows {
+                max = max.max(a_data[(i, j)]);
+            }
+
+            // 2️⃣ Compute shifted exp sum
+            let mut sum = 0.0;
+            for i in 0..rows {
+                sum += (a_data[(i, j)] - max).exp();
+            }
+
+            out_data[(0, j)] = max + sum.ln();
+        }
+    }
+
+    let out = Rc::new(RefCell::new(Tensor {
+        data: out_data,
+        grad: DMatrix::zeros(1, cols),
+        parents: vec![a.clone()],
+        backward: None,
+    }));
+
+    // ---- Backward pass ----
+    let out_clone = out.clone();
+    let a_clone = a.clone();
+
+    out.borrow_mut().backward = Some(Box::new(move || {
+        let grad_out = &out_clone.borrow().grad; // (1 × cols)
+        let mut a_ref = a_clone.borrow_mut();
+
+        for j in 0..cols {
+            // 1️⃣ Recompute stable softmax for this column
+            let mut max = f64::NEG_INFINITY;
+            for i in 0..rows {
+                max = max.max(a_ref.data[(i, j)]);
+            }
+
+            let mut sum = 0.0;
+            for i in 0..rows {
+                sum += (a_ref.data[(i, j)] - max).exp();
+            }
+
+            for i in 0..rows {
+                let softmax_ij = (a_ref.data[(i, j)] - max).exp() / sum;
+
+                // dL/dx = dL/dout * softmax
+                a_ref.grad[(i, j)] += grad_out[(0, j)] * softmax_ij;
+            }
+        }
+    }));
+
+    out
+}
+
 /**
  * Builds the topological sort of the computational graph
  * Uses DFS
@@ -193,5 +259,6 @@ pub fn loss_mse(y_obs: &DMatrix<f64>, y_exp: &DMatrix<f64>) -> f64 {
 pub fn loss_mse_grad(y_obs: &DMatrix<f64>, y_exp: &DMatrix<f64>) -> DMatrix<f64> {
     assert_eq!(y_obs.shape(), y_exp.shape());
 
-    (y_obs - y_exp) * 2.0
+    let n = y_obs.len();
+    (y_obs - y_exp) * (2.0 / (n as f64))
 }

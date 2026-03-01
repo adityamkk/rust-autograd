@@ -1,5 +1,5 @@
 pub mod nn;
-use nn::tensor::{Tensor, add, mul, relu, backward, loss_mse, loss_mse_grad};
+use nn::tensor::{Tensor, add, mul, relu, logsumexp, backward, loss_mse, loss_mse_grad};
 use std::rc::Rc;
 use std::cell::RefCell;
 use nalgebra::DMatrix;
@@ -42,7 +42,7 @@ fn main() {
 
     for _i in 1..30 {
         let x = Rc::new(RefCell::new(Tensor::new(DMatrix::<f64>::from_row_slice(2, 6, &data))));
-        let y = relu(&add(&mul(&w2, &relu(&add(&mul(&w1, &x), &b1))), &b2));
+        let y = logsumexp(&add(&mul(&w2, &relu(&add(&mul(&w1, &x), &b1))), &b2));
         let y_grad = loss_mse_grad(&y.borrow().data, &DMatrix::<f64>::from_row_slice(1, 6, &labels));
         backward(&y, y_grad);
 
